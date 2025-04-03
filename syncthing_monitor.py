@@ -4,7 +4,14 @@ import json
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
-load_dotenv('/opt/syncthing-monitor/.env')
+load_dotenv()
+
+# Obtener el directorio de estado
+estado_dir = os.getenv('ESTADO_DIR', '/app/data')
+estado_file = os.path.join(estado_dir, "estado.json")
+
+# Crear el directorio si no existe
+os.makedirs(estado_dir, exist_ok=True)
 
 def enviar_alerta_telegram(mensaje):
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -14,21 +21,20 @@ def enviar_alerta_telegram(mensaje):
     requests.post(url, params=params)
 
 def cargar_estado_previo():
-    estado_file = os.getenv('ESTADO_FILE')
     if os.path.exists(estado_file):
         with open(estado_file, "r") as f:
             return json.load(f)
     return {}
 
 def guardar_estado_actual(estado):
-    with open(os.getenv('ESTADO_FILE'), "w") as f:
+    with open(estado_file, "w") as f:
         json.dump(estado, f)
 
 try:
     # Configuración desde variables de entorno
     api_url = os.getenv('SYNCTHING_API_URL')
     api_key = os.getenv('SYNCTHING_API_KEY')
-    
+
     # Obtener lista de dispositivos
     response = requests.get(
         f"{api_url}/rest/system/config",

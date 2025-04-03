@@ -1,0 +1,33 @@
+services:
+  syncthing:
+    image: lscr.io/linuxserver/syncthing:latest
+    container_name: syncthing
+    hostname: syncthing
+    ports:
+      - 8384:8384
+      - 22000:22000/tcp
+      - 22000:22000/udp
+      - 21027:21027/udp
+    volumes:
+      - syncthing-config:/config
+      - syncthing-data:/data
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - PUID=1000
+      - PGID=1000
+    restart: unless-stopped
+
+  syncthing-monitor:
+    image: luferox/syncthing-monitor
+    container_name: syncthing-monitor
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - "./data:/app/data"
+    depends_on:
+      - syncthing
+
+volumes:
+  syncthing-config:
+  syncthing-data:

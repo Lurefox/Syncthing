@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+import time
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -12,6 +13,9 @@ estado_file = os.path.join(estado_dir, "estado.json")
 
 # Crear el directorio si no existe
 os.makedirs(estado_dir, exist_ok=True)
+
+# Tiempo de espera antes de alertar una desconexión (en segundos)
+TIEMPO_ESPERA_DESCONEXION = 600  # 10 minutos
 
 def enviar_alerta_telegram(mensaje):
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -52,28 +56,51 @@ try:
     ).json()["connections"]
 
     estado_previo = cargar_estado_previo()
-    alertas = []
+    alertas = {}
 
     for device_id in device_map:
         nombre = device_map[device_id]
         conectado_ahora = estado_actual.get(device_id, {}).get("connected", False)
-        conectado_antes = estado_previo.get(device_id, False)
+        info_previa = estado_previo.get(device_id, {})
 
-        if conectado_ahora != conectado_antes:
-            alertas.append(
-                f"✅ {nombre} reconectado" if conectado_ahora
-                else f"🚨 {nombre} desconectado"
-            )
+        # Verificar si hay una marca de desconexión previa
+        if isinstance(info_previa, dict):
+            conectado_antes = info_previa.get("conectado", False)
+            tiempo_desconexion = info_previa.get("desconexion_time", None)
+        else:
+            conectado_antes = info_previa
+            tiempo_desconexion = None
 
+        tiempo_actual = int(time.time())
+
+        # Si el dispositivo se desconectó y antes estaba conectado
+        if not conectado_ahora and conectado_antes:
+            if tiempo_desconexion is None:  # Primera detección de desconexión
+                estado_previo[device_id] = {
+                    "conectado": False,
+                    "desconexion_time": tiempo_actual
+                }
+            else:
+                # Si han pasado más de 10 minutos, enviar alerta
+                if tiempo_actual - tiempo_desconexion >= TIEMPO_ESPERA_DESCONEXION:
+                    alertas[device_id] = f"🚨 {nombre} desconectado por más de 10 minutos"
+
+        # Si el dispositivo se reconectó
+        elif conectado_ahora and not conectado_antes:
+            alertas[device_id] = f"✅ {nombre} reconectado"
+            estado_previo[device_id] = {"conectado": True}  # Restablecer estado
+
+        # Guardar estado actualizado
+        estado_previo[device_id]["conectado"] = conectado_ahora
+
+    # Enviar alertas si hay cambios
     if alertas:
-        mensaje = "\n".join(alertas)
+        mensaje = "\n".join(alertas.values())
         enviar_alerta_telegram(mensaje)
         print("Alertas enviadas:", mensaje)
 
-    guardar_estado_actual({
-        device_id: estado_actual.get(device_id, {}).get("connected", False)
-        for device_id in device_map
-    })
+    # Guardar estado en el archivo
+    guardar_estado_actual(estado_previo)
 
 except Exception as e:
     print("Error:", str(e))

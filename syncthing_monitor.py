@@ -57,13 +57,13 @@ try:
 
     estado_previo = cargar_estado_previo()
     alertas = {}
+    tiempo_actual = int(time.time())
 
     for device_id in device_map:
         nombre = device_map[device_id]
         conectado_ahora = estado_actual.get(device_id, {}).get("connected", False)
         info_previa = estado_previo.get(device_id, {})
 
-        # Verificar si hay una marca de desconexión previa
         if isinstance(info_previa, dict):
             conectado_antes = info_previa.get("conectado", False)
             tiempo_desconexion = info_previa.get("desconexion_time", None)
@@ -71,27 +71,30 @@ try:
             conectado_antes = info_previa
             tiempo_desconexion = None
 
-        tiempo_actual = int(time.time())
-
         # Si el dispositivo se desconectó y antes estaba conectado
         if not conectado_ahora and conectado_antes:
-            if tiempo_desconexion is None:  # Primera detección de desconexión
+            if tiempo_desconexion is None:
                 estado_previo[device_id] = {
                     "conectado": False,
                     "desconexion_time": tiempo_actual
                 }
             else:
-                # Si han pasado más de 10 minutos, enviar alerta
                 if tiempo_actual - tiempo_desconexion >= TIEMPO_ESPERA_DESCONEXION:
                     alertas[device_id] = f"🚨 {nombre} desconectado por más de 10 minutos"
+                    # No actualizamos el tiempo para evitar repetir la alerta
 
         # Si el dispositivo se reconectó
         elif conectado_ahora and not conectado_antes:
             alertas[device_id] = f"✅ {nombre} reconectado"
-            estado_previo[device_id] = {"conectado": True}  # Restablecer estado
+            estado_previo[device_id] = {"conectado": True}
 
-        # Guardar estado actualizado
-        estado_previo[device_id]["conectado"] = conectado_ahora
+        # Si sigue conectado y no hubo cambio
+        elif conectado_ahora:
+            estado_previo[device_id] = {"conectado": True}
+
+        # Si sigue desconectado pero sin cumplir los 10 minutos aún
+        elif not conectado_ahora and not conectado_antes:
+            estado_previo[device_id] = info_previa  # Mantiene desconexion_time
 
     # Enviar alertas si hay cambios
     if alertas:
